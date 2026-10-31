@@ -89,6 +89,40 @@ button:focus-visible, a:focus-visible { outline: 2px solid #fff; outline-offset:
 .note { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .err { color: #ffd2cc; font-size: 15px; }
 .err strong { color: #fff; display: block; margin-bottom: 4px; }
+.inj-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.inj-row:first-child { border-top: 0; padding-top: 0; }
+.inj-name { font-weight: 600; min-width: 0; }
+.inj-name small { color: var(--muted); font-weight: 500; margin-left: 6px; font-size: 12px; letter-spacing: .06em; }
+.inj-what { color: var(--muted); font-size: 14px; }
+.inj-back { grid-column: 2; grid-row: 2; text-align: right; font-size: 14px; white-space: nowrap; }
+.tag { grid-column: 2; grid-row: 1; justify-self: end; font: 800 12px var(--display); letter-spacing: .1em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; }
+.tag.out { background: var(--loss); color: #3a0a05; }
+.tag.doubt { background: var(--orange); color: #3a1c00; }
+.tag.dtd { background: #fff; color: #06264d; }
+.leaders { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.leader { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; min-width: 0; }
+.leader img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: rgba(255,255,255,.08); }
+.leader .ini { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.1); font: 800 20px var(--display); }
+.leader .val { font: 800 34px/1 var(--display); color: var(--orange); font-variant-numeric: tabular-nums; }
+.leader .cat { font: 700 11px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.leader .who { font-size: 13px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.box-wrap { overflow-x: auto; margin: 0 -4px; }
+.box { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+.box th { font: 700 11px var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-align: right; padding: 0 3px 6px; white-space: nowrap; }
+.box th:first-child, .box td:first-child { text-align: left; }
+.box td { padding: 7px 3px; text-align: right; border-top: 1px solid var(--line); white-space: nowrap; }
+.box td:first-child { white-space: normal; min-width: 6.5em; }
+.box th:first-child, .box td:first-child { position: sticky; left: 0; z-index: 1; background: #0a2a52; padding-left: 4px; box-shadow: 6px 0 6px -6px rgba(0,0,0,.6); }
+.box td.pos { color: var(--win); } .box td.neg { color: var(--loss); }
+.box td.bpts { font-weight: 800; color: var(--orange); }
+.box tr.bench td:first-child { color: var(--muted); }
+.box .split td { border-top: 1px solid rgba(245,132,38,.5); }
+.box-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.box-head .label { margin-bottom: 0; }
+.seg { display: inline-flex; border: 1px solid rgba(245,132,38,.6); border-radius: 999px; padding: 2px; }
+.seg button { background: none; color: var(--muted); border: 0; border-radius: 999px; padding: 5px 11px; font: 700 12px var(--body); }
+.seg button[aria-selected="true"] { background: var(--orange); color: var(--bg-bot); }
+.box-foot { margin-top: 8px; font-size: 12px; color: var(--muted); }
 .stamp { text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -112,6 +146,22 @@ button:focus-visible, a:focus-visible { outline: 2px solid #fff; outline-offset:
   <section class="panel">
     <div class="label">Next game</div>
     <div id="nextBody" class="dim">Loading…</div>
+  </section>
+
+  <section class="panel">
+    <div class="label">Injury report</div>
+    <div id="injBody" class="dim">Loading…</div>
+  </section>
+
+  <section class="panel">
+    <div class="label" id="leadersLabel">Season leaders</div>
+    <div id="leadersBody" class="dim">Loading…</div>
+  </section>
+
+  <section class="panel">
+    <div class="box-head"><div class="label" id="boxLabel">Box score</div>
+      <div class="seg" role="tablist"><button type="button" id="segLast" role="tab">Last game</button><button type="button" id="segSeason" role="tab">Season avg</button></div></div>
+    <div id="boxBody" class="dim">Loading…</div>
   </section>
 
   <div class="stamp" id="stamp"></div>
@@ -146,7 +196,7 @@ function showError(err) {
     : `<strong>Couldn't reach ESPN.</strong>Check your connection and tap Refresh. (${esc(err && err.message || "network error")})`;
   document.getElementById("gameLabel").className = "label";
   document.getElementById("gameLabel").textContent = "Latest game";
-  ["gameBody", "recordBody", "nextBody"].forEach((id, i) => {
+  ["gameBody", "recordBody", "nextBody", "injBody", "leadersBody", "boxBody"].forEach((id, i) => {
     const el = document.getElementById(id);
     el.classList.remove("dim");
     el.innerHTML = i === 0 ? `<div class="err">${msg}</div>` : `<span class="dim">Waiting on the connection above.</span>`;
@@ -315,6 +365,194 @@ function renderNext(ev) {
     </div>${watch}`;
 }
 
+// ---------- Injury report, season leaders, box score ----------
+const shortName = a => a?.shortName || a?.displayName || a?.fullName || "";
+const posOf = a => a?.position?.abbreviation || "";
+
+// ESPN's roster lists each player's current injury; the next game's preview lists them too
+function injuriesFromRoster(j) {
+  if (!j) return null;
+  let ath = j.athletes || [];
+  if (ath.length && Array.isArray(ath[0]?.items)) ath = ath.flatMap(g => g.items || []);
+  const out = [];
+  ath.forEach(a => (a.injuries || []).forEach(inj => out.push({ a, inj })));
+  return out;
+}
+function injuriesFromSummary(j) {
+  const block = (j?.injuries || []).find(b => b.team?.abbreviation === ABBR || b.team?.slug === "new-york-knicks");
+  if (!block) return null;
+  return (block.injuries || []).map(inj => ({ a: inj.athlete || {}, inj }));
+}
+function injLine(inj) {
+  const d = inj.details || {};
+  const part = [d.side && d.side !== "Not Specified" ? d.side : "", d.location || d.type || "", d.detail || ""].filter(Boolean).join(" ").trim();
+  return part || inj.shortComment?.split(/[.(]/)[0] || inj.type?.description || "Injury";
+}
+function injReturn(inj) {
+  const r = inj.details?.returnDate;
+  if (r) {
+    const d = new Date(r.length <= 10 ? r + "T12:00:00" : r);
+    if (!isNaN(d)) return "Back ~" + d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  return "Return date not given";
+}
+function renderInjuries(list) {
+  const body = document.getElementById("injBody");
+  body.classList.remove("dim");
+  if (list == null) { body.innerHTML = `<span class="dim">Injury report isn't available right now. Tap Refresh.</span>`; return; }
+  if (!list.length) { body.innerHTML = `<span class="dim">No injuries listed. Full roster available.</span>`; return; }
+  const rank = st => /out/i.test(st) ? 0 : /doubt/i.test(st) ? 1 : 2;
+  list.sort((x, y) => rank(x.inj.status) - rank(y.inj.status));
+  body.innerHTML = list.map(({ a, inj }) => {
+    const st = inj.status || inj.type?.description || "Injured";
+    const cls = /out/i.test(st) ? "out" : /doubt/i.test(st) ? "doubt" : "dtd";
+    return `<div class="inj-row"><div class="inj-name">${esc(a.displayName || shortName(a))}<small>${esc(posOf(a))}</small></div>
+      <span class="tag ${cls}">${esc(st)}</span><div class="inj-what">${esc(injLine(inj))}</div><div class="inj-back">${esc(injReturn(inj))}</div></div>`;
+  }).join("") + `<div class="note">From ESPN. Return dates are estimates.</div>`;
+}
+
+// Season leaders come from the next game's preview; after a game ESPN shows that game's leaders instead
+function renderLeaders(summary, isPreview) {
+  const body = document.getElementById("leadersBody");
+  body.classList.remove("dim");
+  document.getElementById("leadersLabel").textContent = isPreview ? "Season leaders" : "Last game leaders";
+  const block = (summary?.leaders || []).find(b => b.team?.abbreviation === ABBR || b.team?.slug === "new-york-knicks");
+  const want = [["points", "PTS", "pointsPerGame"], ["rebounds", "REB", "reboundsPerGame"], ["assists", "AST", "assistsPerGame"]];
+  const cats = block?.leaders || [];
+  const cells = want.map(([n, label, alt]) => {
+    const c = cats.find(x => x.name === n || x.name === alt || (x.abbreviation || "").toUpperCase() === label);
+    const top = c?.leaders?.[0];
+    if (!top) return "";
+    const a = top.athlete || {};
+    const img = typeof a.headshot === "string" ? a.headshot : (a.headshot?.href || "");
+    const val = String(top.displayValue || "").split(/[ ,]/)[0];
+    const initials = (a.displayName || "").split(" ").map(w => w[0]).join("").slice(0, 2);
+    return `<div class="leader">${img ? `<img src="${esc(img)}" alt="">` : `<span class="ini">${esc(initials)}</span>`}<span class="val">${esc(val)}</span><span class="cat">${isPreview ? label + " / game" : label}</span><span class="who">${esc(shortName(a))}</span></div>`;
+  }).filter(Boolean);
+  body.innerHTML = cells.length ? `<div class="leaders">${cells.join("")}</div>` : `<span class="dim">Leaders show up once the season has a game played.</span>`;
+}
+
+// Box score: a "Last game" view and a "Season averages" view built from every completed game
+const isNYBlock = b => b.team?.abbreviation === ABBR || b.team?.slug === "new-york-knicks";
+let boxView = "last", boxLast = null, boxEvent = null, boxSeason = null;
+try { boxView = localStorage.getItem("knx-boxview") || "last"; } catch (e) {}
+
+// Turn one game's ESPN summary into compact player lines
+function linesFrom(summary) {
+  const st = (summary?.boxscore?.players || []).find(isNYBlock)?.statistics?.[0];
+  if (!st) return null;
+  const labels = (st.labels || st.names || []).map(x => String(x).toUpperCase());
+  const ix = k => labels.indexOf(k);
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+  const pair = v => { const m = String(v ?? "").match(/(\d+)\s*-\s*(\d+)/); return m ? [+m[1], +m[2]] : [0, 0]; };
+  return (st.athletes || [])
+    .filter(p => !p.didNotPlay && (p.stats || []).length && num(p.stats[ix("MIN")]) > 0)
+    .map(p => {
+      const a = p.athlete || {};
+      const [fgm, fga] = pair(p.stats[ix("FG")]), [tpm, tpa] = pair(p.stats[ix("3PT")]);
+      return { id: String(a.id || a.displayName), name: shortName(a), starter: !!p.starter,
+        min: num(p.stats[ix("MIN")]), pts: num(p.stats[ix("PTS")]), reb: num(p.stats[ix("REB")]), ast: num(p.stats[ix("AST")]),
+        stl: num(p.stats[ix("STL")]), blk: num(p.stats[ix("BLK")]), pm: ix("+/-") >= 0 ? num(p.stats[ix("+/-")]) : null,
+        fgm, fga, tpm, tpa };
+    });
+}
+
+function renderBoxCard() {
+  const body = document.getElementById("boxBody");
+  body.classList.remove("dim");
+  document.getElementById("segLast").setAttribute("aria-selected", boxView === "last");
+  document.getElementById("segSeason").setAttribute("aria-selected", boxView === "season");
+  const live = state(boxEvent) === "in";
+  document.getElementById("segLast").textContent = live ? "Live" : "Last game";
+  boxView === "season" ? renderSeason(body) : renderLastGame(body, live);
+}
+
+function renderLastGame(body, live) {
+  const lines = linesFrom(boxLast);
+  if (!lines) { body.innerHTML = `<span class="dim">Box score not available yet.</span>`; return; }
+  const starters = lines.filter(p => p.starter).sort((a, b) => b.pts - a.pts);
+  const bench = lines.filter(p => !p.starter).sort((a, b) => b.pts - a.pts);
+  const pmCell = v => v == null ? "<td>–</td>" : `<td class="${v > 0 ? "pos" : v < 0 ? "neg" : ""}">${v > 0 ? "+" + v : v}</td>`;
+  const row = (p, cls) => `<tr class="${cls}"><td>${esc(p.name)}</td><td>${p.min}</td><td class="bpts">${p.pts}</td><td>${p.reb}</td><td>${p.ast}</td><td>${p.stl}</td><td>${p.blk}</td>${pmCell(p.pm)}<td>${p.fgm}-${p.fga}</td><td>${p.tpm}-${p.tpa}</td></tr>`;
+  const opp = (comp(boxEvent).competitors || []).find(c => !isKnicks(c))?.team;
+  body.innerHTML = `<div class="box-wrap"><table class="box">
+      <thead><tr><th>Player</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>+/-</th><th>FG</th><th>3PT</th></tr></thead>
+      <tbody>${starters.map(p => row(p, "")).join("")}${bench.map((p, i) => row(p, "bench" + (i === 0 ? " split" : ""))).join("")}</tbody>
+    </table></div>
+    <div class="box-foot">${live ? "Live · " : ""}${opp ? "vs " + esc(opp.displayName || opp.abbreviation) + " · " : ""}Starters first, then bench (gray). Swipe the table sideways for more. +/− is how much the Knicks outscored the other team with that player on the court. FG and 3PT are made-attempted.</div>`;
+}
+
+function renderSeason(body) {
+  if (!boxSeason) { body.innerHTML = `<span class="dim">Adding up the season…</span>`; return; }
+  const { players, games } = boxSeason;
+  if (!games) { body.innerHTML = `<span class="dim">Season averages appear after the first game.</span>`; return; }
+  const one = v => (Math.round(v * 10) / 10).toFixed(1);
+  const pct = (m, a) => a ? Math.round(m / a * 100) + "%" : "–";
+  const rows = Object.values(players).sort((a, b) => b.pts / b.gp - a.pts / a.gp);
+  const pmAvg = p => { if (!p.pmGames) return "<td>–</td>"; const v = Math.round(p.pm / p.pmGames * 10) / 10; return `<td class="${v > 0 ? "pos" : v < 0 ? "neg" : ""}">${v > 0 ? "+" : ""}${v.toFixed(1)}</td>`; };
+  body.innerHTML = `<div class="box-wrap"><table class="box">
+      <thead><tr><th>Player</th><th>GP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>+/-</th><th>FG%</th><th>3P%</th></tr></thead>
+      <tbody>${rows.map(p => `<tr><td>${esc(p.name)}</td><td>${p.gp}</td><td>${one(p.min / p.gp)}</td><td class="bpts">${one(p.pts / p.gp)}</td><td>${one(p.reb / p.gp)}</td><td>${one(p.ast / p.gp)}</td><td>${one(p.stl / p.gp)}</td><td>${one(p.blk / p.gp)}</td>${pmAvg(p)}<td>${pct(p.fgm, p.fga)}</td><td>${pct(p.tpm, p.tpa)}</td></tr>`).join("")}</tbody>
+    </table></div>
+    <div class="box-foot">Per-game averages over ${games} game${games === 1 ? "" : "s"}, sorted by points. Swipe the table sideways for more. GP is games played. FG% and 3P% are the share of shots made.</div>`;
+}
+
+// Finished games never change, so each one is saved on the phone and only fetched once
+async function buildSeason(doneEvents) {
+  const cache = id => { try { return JSON.parse(localStorage.getItem("knx-box2-" + id)); } catch (e) { return null; } };
+  const save = (id, v) => { try { localStorage.setItem("knx-box2-" + id, JSON.stringify(v)); } catch (e) {} };
+  const games = {};
+  const missing = [];
+  doneEvents.forEach(e => { const c = cache(e.id); if (c) games[e.id] = c; else missing.push(e.id); });
+  for (let i = 0; i < missing.length; i += 6) {
+    const batch = missing.slice(i, i + 6);
+    const res = await Promise.allSettled(batch.map(id => getJSON(`${BASE}/summary?event=${id}`)));
+    res.forEach((r, k) => {
+      const lines = r.status === "fulfilled" ? linesFrom(r.value) : null;
+      if (lines && lines.length) { games[batch[k]] = lines; save(batch[k], lines); }
+    });
+  }
+  const players = {};
+  Object.values(games).forEach(lines => lines.forEach(l => {
+    const p = players[l.id] || (players[l.id] = { name: l.name, gp: 0, min: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, pm: 0, pmGames: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0 });
+    p.gp++; ["min", "pts", "reb", "ast", "stl", "blk", "fgm", "fga", "tpm", "tpa"].forEach(k => p[k] += l[k] || 0);
+    if (l.pm != null) { p.pm += l.pm; p.pmGames++; }
+  }));
+  return { players, games: Object.keys(games).length };
+}
+
+["segLast", "segSeason"].forEach(id => document.getElementById(id).addEventListener("click", () => {
+  boxView = id === "segLast" ? "last" : "season";
+  try { localStorage.setItem("knx-boxview", boxView); } catch (e) {}
+  renderBoxCard();
+}));
+
+async function loadExtras(latestEvent, nextEvent, doneEvents) {
+  const sum = id => id ? getJSON(`${BASE}/summary?event=${id}`) : Promise.reject(new Error("no game"));
+  const [rosterR, boxR, nextR] = await Promise.allSettled([
+    getJSON(`${BASE}/teams/${TEAM}/roster`),
+    sum(latestEvent?.id),
+    sum(nextEvent?.id)
+  ]);
+  const ok = r => r.status === "fulfilled" ? r.value : null;
+  const safe = (id, fn) => { try { fn(); } catch (e) {
+    const el = document.getElementById(id); el.classList.add("dim"); el.textContent = "Couldn't read this part of ESPN's data. Tap Refresh.";
+  } };
+  safe("injBody", () => {
+    let list = injuriesFromRoster(ok(rosterR));
+    if (!list || !list.length) list = injuriesFromSummary(ok(nextR)) ?? list;
+    renderInjuries(list);
+  });
+  safe("leadersBody", () => {
+    if (ok(nextR)?.leaders?.length) renderLeaders(ok(nextR), true);
+    else renderLeaders(ok(boxR), false);
+  });
+  boxLast = ok(boxR); boxEvent = latestEvent;
+  safe("boxBody", renderBoxCard);
+  boxSeason = await buildSeason(doneEvents || []).catch(() => ({ players: {}, games: 0 }));
+  safe("boxBody", renderBoxCard);
+}
+
 async function load() {
   clearTimeout(liveTimer);
   const btn = document.getElementById("refresh");
@@ -360,6 +598,7 @@ async function load() {
     safe("gameBody", () => renderGame(live || last, !!live));
     safe("recordBody", () => renderRecord(teamR.status === "fulfilled" ? teamR.value : null, events));
     safe("nextBody", () => renderNext(next));
+    await loadExtras(live || last, next, done.filter(e => !board.some(b => b.id === e.id && state(b) === "in")));
 
     document.getElementById("stamp").textContent = "Updated " + new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) + (live ? " · refreshing every 30s" : "");
     if (live) liveTimer = setTimeout(load, 30000);
